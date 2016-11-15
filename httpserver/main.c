@@ -41,6 +41,8 @@
 #define LED_STRING              "LED"
 #define LED1_STRING             "LED1_"
 #define LED2_STRING             ",LED2_"
+#define LED3_STRING             "LED3_"
+#define LED4_STRING             ",LED4_"
 #define LED_ON_STRING           "ON"
 #define LED_OFF_STRING          "OFF"
 
@@ -62,10 +64,17 @@ typedef enum{
     LAN_CONNECTION_FAILED = -0x7D0,       
     INTERNET_CONNECTION_FAILED = LAN_CONNECTION_FAILED - 1,
     DEVICE_NOT_IN_STATION_MODE = INTERNET_CONNECTION_FAILED - 1,
-
+    FILE_ALREADY_EXIST = DEVICE_NOT_IN_STATION_MODE - 1,
+    FILE_CLOSE_ERROR = FILE_ALREADY_EXIST - 1,
+    FILE_NOT_MATCHED = FILE_CLOSE_ERROR - 1,
+    FILE_OPEN_READ_FAILED = FILE_NOT_MATCHED - 1,
+    FILE_OPEN_WRITE_FAILED = FILE_OPEN_READ_FAILED -1,
+    FILE_READ_FAILED = FILE_OPEN_WRITE_FAILED - 1,
+    FILE_WRITE_FAILED = FILE_READ_FAILED - 1,
     STATUS_CODE_MAX = -0xBB8
 }e_AppStatusCodes;
 
+#define USER_FILE_NAME          "fs_demo.txt"
 
 //*****************************************************************************
 //                 GLOBAL VARIABLES -- Start
@@ -82,9 +91,14 @@ int g_iSimplelinkRole = ROLE_INVALID;
 signed int g_uiIpAddress = 0;
 unsigned char g_ucSSID[AP_SSID_LEN_MAX];
 
-int dimpos1 = 0,
-	dimpos2 = 0,
-	dimpos3 = 0;
+static int dimpos1 = 0,
+	       dimpos2 = 0,
+	       dimpos3 = 0,
+		   dimpos4 = 0,
+		   led1_status = 0,
+		   led2_status = 0,
+		   led3_status = 0,
+		   led4_status = 0;
 
 #if defined(ccs)
 extern void (* const g_pfnVectors[])(void);
@@ -104,8 +118,123 @@ volatile unsigned short g_usMCNetworkUstate = 0;
 
 int g_uiSimplelinkRole = ROLE_INVALID;
 unsigned int g_uiDeviceModeConfig = ROLE_STA; //default is STA mode
-volatile unsigned char g_ucConnectTimeout =0;
+volatile unsigned char g_ucConnectTimeout = 0;
 
+static long WriteFileToDevice()
+{
+    long lRetVal = -1,
+    	 lFileHandle;
+    char data[4];
+    //
+    //  create a user file
+    //
+    lRetVal = sl_FsOpen((unsigned char *)USER_FILE_NAME,
+                FS_MODE_OPEN_CREATE(10, \
+                          _FS_FILE_OPEN_FLAG_COMMIT|_FS_FILE_PUBLIC_WRITE),
+                        NULL,
+                        &lFileHandle);
+    if(lRetVal < 0)
+    {
+        //
+        // File may already be created
+        //
+        lRetVal = sl_FsClose(lFileHandle, 0, 0, 0);
+        ASSERT_ON_ERROR(lRetVal);
+    }
+    else
+    {
+    	Report("close the file");
+        //
+        // close the user file
+        //
+        lRetVal = sl_FsClose(lFileHandle, 0, 0, 0);
+        if (SL_RET_CODE_OK != lRetVal)
+        {
+            ASSERT_ON_ERROR(FILE_CLOSE_ERROR);
+        }
+    }
+
+    //
+    //  open a user file for writing
+    //
+    lRetVal = sl_FsOpen((unsigned char *)USER_FILE_NAME,
+                        FS_MODE_OPEN_WRITE,
+                        NULL,
+                        &lFileHandle);
+    if(lRetVal < 0)
+    {
+        lRetVal = sl_FsClose(lFileHandle, 0, 0, 0);
+        ASSERT_ON_ERROR(FILE_OPEN_WRITE_FAILED);
+    }
+    Report("write to file");
+    data[0] = dimpos1;
+    data[1] = dimpos2;
+    data[2] = dimpos3;
+    data[3] = dimpos4;
+
+	lRetVal = sl_FsWrite(lFileHandle,
+				0,
+				(unsigned char *)data, sizeof(data));
+	if (lRetVal < 0)
+	{
+		lRetVal = sl_FsClose(lFileHandle, 0, 0, 0);
+		ASSERT_ON_ERROR(FILE_WRITE_FAILED);
+	}
+
+    //
+    // close the user file
+    //
+	Report("ok");
+    lRetVal = sl_FsClose(lFileHandle, 0, 0, 0);
+    if (SL_RET_CODE_OK != lRetVal)
+    {
+        ASSERT_ON_ERROR(FILE_CLOSE_ERROR);
+    }
+
+    return SUCCESS;
+}
+
+static long ReadFileFromDevice()
+{
+    long lRetVal = -1,
+         lFileHandle = 0;
+    unsigned char data[4];
+
+
+    //
+    // open a user file for reading
+    //
+    lRetVal = sl_FsOpen((unsigned char *)USER_FILE_NAME,
+                        FS_MODE_OPEN_READ,
+                        NULL,
+                        &lFileHandle);
+    if(lRetVal < 0)
+    {
+        lRetVal = sl_FsClose(lFileHandle, 0, 0, 0);
+        ASSERT_ON_ERROR(FILE_OPEN_READ_FAILED);
+    }
+
+    Report("open read");
+	lRetVal = sl_FsRead(lFileHandle, 0,
+				 data, sizeof(data));
+	if ((lRetVal < 0) || (lRetVal != sizeof(data)))
+	{
+		lRetVal = sl_FsClose(lFileHandle, 0, 0, 0);
+		ASSERT_ON_ERROR(FILE_READ_FAILED);
+	}
+
+    //
+    // close the user file
+    //
+    lRetVal = sl_FsClose(lFileHandle, 0, 0, 0);
+    if (SL_RET_CODE_OK != lRetVal)
+    {
+        ASSERT_ON_ERROR(FILE_CLOSE_ERROR);
+    }
+
+    Report("dimpos 1: %u; dimpos 2: %u; dimpos 3: %u; dimps 4: %u", data[0], data[1], data[2], data[3]);
+    return SUCCESS;
+}
 
 
 #ifdef USE_FREERTOS
@@ -424,7 +553,8 @@ void SimpleLinkNetAppEventHandler(SlNetAppEvent_t *pNetAppEvent)
             SL_IPV4_BYTE(pNetAppEvent->EventData.ipAcquiredV4.ip,2),
             SL_IPV4_BYTE(pNetAppEvent->EventData.ipAcquiredV4.ip,1),
             SL_IPV4_BYTE(pNetAppEvent->EventData.ipAcquiredV4.ip,0),
-            SL_IPV4_BYTE(pNetAppEvent->EventData.ipAcquiredV4.gateway,3),
+
+			SL_IPV4_BYTE(pNetAppEvent->EventData.ipAcquiredV4.gateway,3),
             SL_IPV4_BYTE(pNetAppEvent->EventData.ipAcquiredV4.gateway,2),
             SL_IPV4_BYTE(pNetAppEvent->EventData.ipAcquiredV4.gateway,1),
             SL_IPV4_BYTE(pNetAppEvent->EventData.ipAcquiredV4.gateway,0));
@@ -513,7 +643,45 @@ void SimpleLinkSockEventHandler(SlSockEvent_t *pSock)
     //
  
 }
+static _u8 get_server_resp(unsigned char *ptr, char *led, _u16 len, int value) {
+	int status = value > 0 ? 1 : 0;
+	_u8 tmp = 0, ret_len = 0;
 
+	memcpy(ptr, led, len);
+	ptr += len;
+	ret_len += len;
+	if (status) {
+		tmp = strlen(LED_ON_STRING);
+		memcpy(ptr, LED_ON_STRING, tmp);
+	} else {
+		tmp = strlen(LED_OFF_STRING);
+		memcpy(ptr, LED_OFF_STRING, tmp);
+	}
+	ptr += tmp;
+	ret_len += tmp;
+	return ret_len;
+}
+
+static int calc_dim_value(int *dim, unsigned char *value, unsigned char len) {
+
+	if (!dim || !value || !len)
+		return -1;
+
+	if (memcmp(value, LED_POS_DIM_STRING, len) == 0) {
+		*dim += DIM_INC;
+		Report("Led dim pos\n\r");
+	} else {
+		*dim -= DIM_INC;
+		Report("Led dim neg\n\r");
+	}
+
+	if (*dim >= 254)
+		*dim = 254;
+	else if (*dim <= 0)
+		*dim = 0;
+
+	return 0;
+}
 //*****************************************************************************
 //
 //! This function gets triggered when HTTP Server receives Application
@@ -535,60 +703,31 @@ void SimpleLinkHttpServerCallback(SlHttpServerEvent_t *pSlHttpServerEvent,
         return;
     }
     
-    switch (pSlHttpServerEvent->Event)
-    {
-        case SL_NETAPP_HTTPGETTOKENVALUE_EVENT:
-        {
-          unsigned char status, *ptr;
+    switch (pSlHttpServerEvent->Event) {
+		case SL_NETAPP_HTTPGETTOKENVALUE_EVENT: {
+			unsigned char *ptr;
 
-          ptr = pSlHttpServerResponse->ResponseData.token_value.data;
-          pSlHttpServerResponse->ResponseData.token_value.len = 0;
-          if(memcmp(pSlHttpServerEvent->EventData.httpTokenName.data, GET_token,
-                    strlen((const char *)GET_token)) == 0)
-          {
+			ptr = pSlHttpServerResponse->ResponseData.token_value.data;
+			pSlHttpServerResponse->ResponseData.token_value.len = 0;
 
-      //      status = GPIO_IF_LedStatus(MCU_RED_LED_GPIO);
-            strLenVal = strlen(LED1_STRING);
-            memcpy(ptr, LED1_STRING, strLenVal);
-            ptr += strLenVal;
-            pSlHttpServerResponse->ResponseData.token_value.len += strLenVal;
-            if(status & 0x01)
-            {
-              strLenVal = strlen(LED_ON_STRING);
-              memcpy(ptr, LED_ON_STRING, strLenVal);
-              ptr += strLenVal;
-              pSlHttpServerResponse->ResponseData.token_value.len += strLenVal;
-            }
-            else
-            {
-              strLenVal = strlen(LED_OFF_STRING);
-              memcpy(ptr, LED_OFF_STRING, strLenVal);
-              ptr += strLenVal;
-              pSlHttpServerResponse->ResponseData.token_value.len += strLenVal;
-            }
-     //       status = GPIO_IF_LedStatus(MCU_GREEN_LED_GPIO);
-            strLenVal = strlen(LED2_STRING);
-            memcpy(ptr, LED2_STRING, strLenVal);
-            ptr += strLenVal;
-            pSlHttpServerResponse->ResponseData.token_value.len += strLenVal;
-            if(status & 0x01)
-            {
-              strLenVal = strlen(LED_ON_STRING);
-              memcpy(ptr, LED_ON_STRING, strLenVal);
-              ptr += strLenVal;
-              pSlHttpServerResponse->ResponseData.token_value.len += strLenVal;
-            }
-            else
-            {
-              strLenVal = strlen(LED_OFF_STRING);
-              memcpy(ptr, LED_OFF_STRING, strLenVal);
-              ptr += strLenVal;
-              pSlHttpServerResponse->ResponseData.token_value.len += strLenVal;
-            }
-            *ptr = '\0';
-          }
+			if (memcmp(pSlHttpServerEvent->EventData.httpTokenName.data, GET_token,
+					strlen((const char *) GET_token)) == 0) {
+				pSlHttpServerResponse->ResponseData.token_value.len =
+						get_server_resp(ptr, LED1_STRING, strlen(LED1_STRING),
+								dimpos1);
+				pSlHttpServerResponse->ResponseData.token_value.len +=
+						get_server_resp(ptr, LED2_STRING, strlen(LED2_STRING),
+								dimpos2);
+				pSlHttpServerResponse->ResponseData.token_value.len +=
+						get_server_resp(ptr, LED3_STRING, strlen(LED3_STRING),
+								dimpos3);
+				pSlHttpServerResponse->ResponseData.token_value.len +=
+						get_server_resp(ptr, LED4_STRING, strlen(LED4_STRING),
+								dimpos4);
+				*ptr = '\0';
+			}
 
-        }
+		}
         break;
 
         case SL_NETAPP_HTTPPOSTTOKENVALUE_EVENT:
@@ -610,54 +749,35 @@ void SimpleLinkHttpServerCallback(SlHttpServerEvent_t *pSlHttpServerEvent,
 
 			switch (led) {
 			case '1':
-				if (memcmp(ptr, LED_POS_DIM_STRING, strLenVal) == 0) {
-					dimpos1 += DIM_INC;
-					Report("Led Red dim pos\n\r");
-
-				} else {
-					dimpos1 -= DIM_INC;
-					Report("Led Red dimm neg\n\r");
+				if (led1_status) {
+					calc_dim_value(&dimpos1, ptr, strLenVal);
+					UpdateDutyCycle(TIMERA3_BASE, TIMER_B, dimpos1);
 				}
-
-				if (dimpos1 >= 254)
-					dimpos1 = 254;
-				if (dimpos1 <= 0)
-					dimpos1 = 0;
-				UpdateDutyCycle(TIMERA3_BASE, TIMER_B, dimpos1);
 				break;
 			case '2':
-				if (memcmp(ptr, LED_POS_DIM_STRING, strLenVal) == 0) {
-					dimpos2 += DIM_INC;
-					Report("Led Green dim pos\n\r");
-				} else {
-					dimpos2 -= DIM_INC;
-					Report("Led Green dim neg\n\r");
+				if (led2_status) {
+					calc_dim_value(&dimpos2, ptr, strLenVal);
+					UpdateDutyCycle(TIMERA3_BASE, TIMER_A, dimpos2);
 				}
-				if (dimpos2 >= 254)
-					dimpos2 = 254;
-				if (dimpos2 <= 0)
-					dimpos2 = 0;
-				UpdateDutyCycle(TIMERA3_BASE, TIMER_A, dimpos2);
 				break;
 			case '3':
-				if (memcmp(ptr, LED_POS_DIM_STRING, strLenVal) == 0) {
-					dimpos3 += DIM_INC;
-					Report("Led Green On\n\r");
-				} else {
-					dimpos3 -= DIM_INC;
-					Report("Led Green Off\n\r");
+				if (led3_status) {
+					calc_dim_value(&dimpos3, ptr, strLenVal);
+					UpdateDutyCycle(TIMERA2_BASE, TIMER_B, dimpos3);
 				}
-				if (dimpos3 >= 254)
-					dimpos3 = 254;
-				if (dimpos3 <= 0)
-					dimpos3 = 0;
-				UpdateDutyCycle(TIMERA2_BASE, TIMER_B, dimpos3);
+				break;
+			case '4':
+				if (led4_status) {
+					calc_dim_value(&dimpos4, ptr, strLenVal);
+					UpdateDutyCycle(TIMERA0_BASE, TIMER_A, dimpos4);
+				}
 				break;
 			default:
 				Report("led unknown");
 				break;
 			}
           }
+
           if(memcmp(ptr, POST_token, strlen((const char *)POST_token)) == 0)
           {
             ptr = pSlHttpServerEvent->EventData.httpPostData.token_value.data;
@@ -672,36 +792,54 @@ void SimpleLinkHttpServerCallback(SlHttpServerEvent_t *pSlHttpServerEvent,
 			switch (led) {
 			case '1':
 				if (memcmp(ptr, LED_ON_STRING, strLenVal) == 0) {
-		            UpdateDutyCycle(TIMERA3_BASE, TIMER_B, 254);
-					Report("Led Red On\n\r");
-
+		            UpdateDutyCycle(TIMERA3_BASE, TIMER_B, dimpos1);
+					Report("Led 1 On\n\r");
+					led1_status = 1;
 				} else {
 		            UpdateDutyCycle(TIMERA3_BASE, TIMER_B, 0);
-					Report("Led Red Off\n\r");
+					Report("Led 1 Off\n\r");
+					led1_status = 0;
 				}
 				break;
 			case '2':
 				if (memcmp(ptr, LED_ON_STRING, strLenVal) == 0) {
-		            UpdateDutyCycle(TIMERA3_BASE, TIMER_A, 254);
-					Report("Led Green On\n\r");
+		            UpdateDutyCycle(TIMERA3_BASE, TIMER_A, dimpos2);
+					Report("Led 2 On\n\r");
+					led2_status = 1;
 				} else {
 		            UpdateDutyCycle(TIMERA3_BASE, TIMER_A, 0);
-					Report("Led Green Off\n\r");
+					Report("Led 2 Off\n\r");
+					led2_status = 0;
 				}
 				break;
 			case '3':
 				if (memcmp(ptr, LED_ON_STRING, strLenVal) == 0) {
-		            UpdateDutyCycle(TIMERA2_BASE, TIMER_B, 254);
-					Report("Led Green On\n\r");
+		            UpdateDutyCycle(TIMERA2_BASE, TIMER_B, dimpos3);
+					Report("Led 3 On\n\r");
+					led3_status = 1;
 				} else {
 		            UpdateDutyCycle(TIMERA2_BASE, TIMER_B, 0);
-					Report("Led Green Off\n\r");
+					Report("Led 3 Off\n\r");
+					led3_status = 0;
+				}
+				break;
+			case '4':
+				if (memcmp(ptr, LED_ON_STRING, strLenVal) == 0) {
+		            UpdateDutyCycle(TIMERA0_BASE, TIMER_A, dimpos4);
+					Report("Led 4 On\n\r");
+					led4_status = 1;
+				} else {
+		            UpdateDutyCycle(TIMERA0_BASE, TIMER_A, 0);
+					Report("Led 4 Off\n\r");
+					led4_status = 0;
 				}
 				break;
 			default:
 				Report("led unknown");
 				break;
 			}
+
+		    WriteFileToDevice();
 		}
 	}
 		break;
@@ -1239,6 +1377,8 @@ void main()
     UpdateDutyCycle(TIMERA3_BASE, TIMER_B, 0);
     UpdateDutyCycle(TIMERA3_BASE, TIMER_A, 254);
 
+    WriteFileToDevice();
+    ReadFileFromDevice();
 
     //
     // Create HTTP Server Task

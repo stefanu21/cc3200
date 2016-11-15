@@ -12,15 +12,37 @@
     width: 30px;    
 }
 .lightOn {
-    margin-top: -10px; 
+    margin-top: -30px; 
    }
 .lightOff{
 margin-top: 0px;
 }
+
+.lightOn:hover, .lightOff:hover {background-color: #3e8e41}
+
+.lightOn:active, .lightOff:active {
+  background-color: #3e8e41;
+  box-shadow: 0 5px #666;
+  transform: translateY(4px);
+}
+
 .lightOn, .lightOff{
-    
-    cursor:pointer;
-    font-weight:bold;
+   
+  margin: 10px;
+  display: inline-block;
+  padding: 10px;
+  font-size: 16px;
+  width: 50%;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  outline: none;
+  color: #fff;
+  background-color: #A9A9A9;
+  border: none;
+  border-radius: 15px;
+  box-shadow: 0 9px #999;
+  font-weight:bold;
 }
 
 </style>
@@ -39,6 +61,14 @@ function UpdateStatus()
 		document.getElementById("LEDno2").checked = true;
 	else
 		document.getElementById("LEDno2").checked = false;
+	if(status.indexOf("LED3_ON") > -1)
+		document.getElementById("LEDno3").checked = true;
+	else
+		document.getElementById("LEDno3").checked = false;
+	if(status.indexOf("LED4_ON") > -1)
+		document.getElementById("LEDno4").checked = true;
+	else
+		document.getElementById("LEDno4").checked = false;
 }
 
 function ToggleLED(whichOne, led)
@@ -108,18 +138,14 @@ function toggleSwitch (whichOne, led) {
 
 <body class="in-frame" onload="UpdateStatus()">
 
-<table border="0"  width="50%" cellpadding="3" cellspacing="0">
-
-<tr>  
-	<td class="page-title" colspan=2 > Beleuchtung</td>
-</tr>
+<table border="0"  width="100%" cellpadding="4" cellspacing="0">
 
 <tr>
 	<td align=center class = "in-a-box" colspan=1> <br>
 		<div class="lightOn" onclick="toggleSwitch('on', 1);">ON</div>
  		<div class="lightSwitch" id="lightSwitch1"></div>
 		<div class="lightOff" onclick="toggleSwitch('off', 1);">OFF</div>
-		<div class="lightOff" onclick="dimmlight('pos', 1);">+</div>
+		<div class="lightOn" onclick="dimmlight('pos', 1);">+</div>
 		<div class="lightOff" onclick="dimmlight('neg', 1);">-</div>
 	</td>
 
@@ -127,7 +153,7 @@ function toggleSwitch (whichOne, led) {
 		<div class="lightOn" onclick="toggleSwitch('on', 2);">ON</div>
  		<div class="lightSwitch" id="lightSwitch2" ></div>
 		<div class="lightOff" onclick="toggleSwitch('off', 2);">OFF</div>
-		<div class="lightOff" onclick="dimmlight('pos', 2);">+</div>
+		<div class="lightOn" onclick="dimmlight('pos', 2);">+</div>
 		<div class="lightOff" onclick="dimmlight('neg', 2);">-</div>
 	</td>
 
@@ -138,10 +164,17 @@ function toggleSwitch (whichOne, led) {
 		<div class="lightOff" onclick="dimmlight('pos', 3);">+</div>
 		<div class="lightOff" onclick="dimmlight('neg', 3);">-</div>
 	</td>
+
+	<td align=center class = "in-a-box" colspan=1> <br>
+		<div class="lightOn" onclick="toggleSwitch('on', 4);">ON</div>
+ 		<div class="lightSwitch" id="lightSwitch4" ></div>
+		<div class="lightOff" onclick="toggleSwitch('off', 4);">OFF</div>
+		<div class="lightOff" onclick="dimmlight('pos', 4);">+</div>
+		<div class="lightOff" onclick="dimmlight('neg', 4);">-</div>
+	</td>
 </tr>
- 
  <tr >
-  <td class = "border-l-top" colspan=2 ></td>
+  <td class = "border-l-top" colspan=4 ></td>
 </tr>
 </table>
 
