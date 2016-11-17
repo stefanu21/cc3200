@@ -839,7 +839,7 @@ void SimpleLinkHttpServerCallback(SlHttpServerEvent_t *pSlHttpServerEvent,
 				break;
 			}
 
-		    WriteFileToDevice();
+//		    WriteFileToDevice();
 		}
 	}
 		break;
@@ -1377,8 +1377,8 @@ void main()
     UpdateDutyCycle(TIMERA3_BASE, TIMER_B, 0);
     UpdateDutyCycle(TIMERA3_BASE, TIMER_A, 254);
 
-    WriteFileToDevice();
-    ReadFileFromDevice();
+  //  WriteFileToDevice();
+  //  ReadFileFromDevice();
 
     //
     // Create HTTP Server Task
